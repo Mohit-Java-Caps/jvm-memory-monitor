@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>JVM Memory Monitor — Mohit Kumar</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Syne:wght@700;800&display=swap');
+:root{--bg:#0a0a0f;--s:#111118;--b:#1e1e2e;--t:#e8e8f0;--m:#55556a;--g:#42f7c8;--a:#7c6af7;--w:#f7c842;--r:#f7426a}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--t);font-family:'JetBrains Mono',monospace;min-height:100vh}
+.wrap{max-width:960px;margin:0 auto;padding:24px 20px}
+header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;flex-wrap:wrap;gap:10px}
+.logo{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:#fff}
+.logo span{color:var(--a)}
+.badge{font-size:10px;color:var(--g);border:1px solid var(--g);padding:3px 10px;border-radius:20px;letter-spacing:1px;display:inline-flex;align-items:center;gap:5px;text-decoration:none}
+.pulse{width:7px;height:7px;border-radius:50%;background:var(--g);animation:blink 1.2s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px}
+.card{background:var(--s);border:1px solid var(--b);border-radius:10px;padding:12px 14px}
+.lbl{font-size:9px;color:var(--m);letter-spacing:2px;text-transform:uppercase;margin-bottom:5px}
+.val{font-size:22px;font-weight:600;font-family:'Syne',sans-serif}
+.sub{font-size:10px;color:var(--m);margin-top:3px}
+.sec{background:var(--s);border:1px solid var(--b);border-radius:12px;padding:16px;margin-bottom:12px}
+.sec-title{font-size:9px;color:var(--m);letter-spacing:2px;text-transform:uppercase;margin-bottom:12px}
+.rg{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px}
+.r{border-radius:8px;padding:12px}
+.r1{background:rgba(124,106,247,.1);border:1px solid rgba(124,106,247,.3)}
+.r2{background:rgba(247,200,66,.08);border:1px solid rgba(247,200,66,.3)}
+.r3{background:rgba(66,247,200,.08);border:1px solid rgba(66,247,200,.3)}
+.r4{background:rgba(247,66,106,.08);border:1px solid rgba(247,66,106,.25)}
+.rn{font-size:10px;font-weight:600;margin-bottom:8px}
+.bw{height:6px;background:rgba(255,255,255,.07);border-radius:3px;margin-bottom:5px;overflow:hidden}
+.bf{height:6px;border-radius:3px;transition:width .6s ease}
+.rs{font-size:11px;color:var(--m)}
+.charts{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+.cbox{background:var(--s);border:1px solid var(--b);border-radius:12px;padding:14px}
+.ctitle{font-size:9px;color:var(--m);letter-spacing:2px;text-transform:uppercase;margin-bottom:10px}
+canvas{display:block;width:100%!important}
+.gtbl{width:100%;border-collapse:collapse;font-size:11px}
+.gtbl th{text-align:left;color:var(--m);padding:6px 8px;border-bottom:1px solid var(--b);font-size:9px;letter-spacing:1.5px;text-transform:uppercase}
+.gtbl td{padding:7px 8px;border-bottom:1px solid var(--b);color:var(--m)}
+.good{color:var(--g)!important}.warn{color:var(--w)!important}.bad{color:var(--r)!important}
+.ctrls{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.btn{font-family:'JetBrains Mono',monospace;font-size:11px;padding:7px 16px;border-radius:6px;cursor:pointer;border:1px solid var(--b);background:transparent;color:var(--m);transition:all .15s}
+.btn:hover{border-color:var(--a);color:var(--a)}
+.btn.on{background:var(--a);border-color:var(--a);color:#fff}
+.btn.red{border-color:var(--r);color:var(--r)}
+.btn.red:hover{background:var(--r);color:#fff}
+.alert{background:rgba(247,66,106,.08);border:1px solid rgba(247,66,106,.3);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--r);margin-bottom:10px;display:none}
+.tgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:6px}
+.th{border-radius:6px;padding:8px;text-align:center;border:1px solid var(--b);background:rgba(255,255,255,.02)}
+.tn{font-size:9px;color:var(--m);margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ts{font-size:10px;font-weight:600}
+.tr{color:var(--g)}.tw{color:var(--w)}.tb{color:var(--r)}.tl{color:var(--a)}
+.foot{text-align:center;font-size:10px;color:var(--m);margin-top:14px;padding-bottom:10px}
+.foot a{color:var(--a);text-decoration:none}
+@media(max-width:600px){.grid4{grid-template-columns:1fr 1fr}.rg{grid-template-columns:1fr 1fr}.charts{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div>
+    <div class="logo">JVM<span>Monitor</span></div>
+    <div style="font-size:10px;color:var(--m);letter-spacing:2px;margin-top:3px">LIVE HEAP &amp; GC ANALYTICS</div>
+  </div>
+  <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
+    <div class="badge"><div class="pulse"></div><span id="live-label">SIMULATING</span></div>
+    <a class="badge" style="color:var(--a);border-color:var(--a)" href="https://github.com/Mohit-Java-Caps/jvm-heap-memory-management" target="_blank">Mohit-Java-Caps</a>
+  </div>
+</header>
+
+<div class="ctrls">
+  <button class="btn on" onclick="sc('normal',this)">Normal workload</button>
+  <button class="btn" onclick="sc('heavy',this)">Heavy allocation</button>
+  <button class="btn" onclick="sc('leak',this)">Memory leak</button>
+  <button class="btn red" onclick="sc('oom',this)">OOM approaching</button>
+  <button class="btn" style="margin-left:auto;border-color:var(--g);color:var(--g)" onclick="fgc()">Force GC</button>
+</div>
+
+<div class="alert" id="al">Warning: Heap usage above 85% — OutOfMemoryError risk! Tune -Xmx or fix the leak.</div>
+
+<div class="grid4">
+  <div class="card"><div class="lbl">Heap used</div><div class="val" id="m1" style="color:var(--g)">0 MB</div><div class="sub" id="m1s">of 512 MB (0%)</div></div>
+  <div class="card"><div class="lbl">GC collections</div><div class="val" id="m2" style="color:var(--a)">0</div><div class="sub">total cycles</div></div>
+  <div class="card"><div class="lbl">GC pause total</div><div class="val" id="m3" style="color:var(--w)">0 ms</div><div class="sub" id="m3s">avg 0 ms/event</div></div>
+  <div class="card"><div class="lbl">Objects promoted</div><div class="val" id="m4" style="color:var(--t)">0</div><div class="sub">to old gen</div></div>
+</div>
+
+<div class="sec">
+  <div class="sec-title">Heap regions — G1 GC layout</div>
+  <div class="rg">
+    <div class="r r1">
+      <div class="rn" style="color:#9580ff">Eden (young gen)</div>
+      <div class="bw"><div class="bf" id="be" style="background:#7c6af7;width:0"></div></div>
+      <div class="rs"><span id="eu">0</span> / 80 MB (<span id="ep">0</span>%)</div>
+      <div style="font-size:9px;color:var(--m);margin-top:4px">All new objects start here</div>
+    </div>
+    <div class="r r2">
+      <div class="rn" style="color:#f7c842">Survivor S0/S1</div>
+      <div class="bw"><div class="bf" id="bs" style="background:#f7c842;width:0"></div></div>
+      <div class="rs"><span id="su">0</span> / 20 MB (<span id="sp">0</span>%)</div>
+      <div style="font-size:9px;color:var(--m);margin-top:4px">Survived GC, age &lt; 15</div>
+    </div>
+    <div class="r r3">
+      <div class="rn" style="color:#42f7c8">Old generation</div>
+      <div class="bw"><div class="bf" id="bo" style="background:#42f7c8;width:0"></div></div>
+      <div class="rs"><span id="ou">0</span> / 380 MB (<span id="op">0</span>%)</div>
+      <div style="font-size:9px;color:var(--m);margin-top:4px">Tenured, long-lived objects</div>
+    </div>
+    <div class="r r4" style="grid-column:1/-1;display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <div class="rn" style="color:#f7426a">Metaspace — <span id="mu">45</span> MB</div>
+        <div class="rs" style="margin-top:4px">Class metadata, method tables, bytecode — not part of heap</div>
+      </div>
+      <div style="font-size:9px;color:var(--m);text-align:right">Java 8+ replaces PermGen<br>-XX:MaxMetaspaceSize=512m</div>
+    </div>
+  </div>
+</div>
+
+<div class="charts">
+  <div class="cbox"><div class="ctitle">Heap usage over time (MB)</div><div style="height:155px"><canvas id="hc"></canvas></div></div>
+  <div class="cbox"><div class="ctitle">GC pause duration (ms)</div><div style="height:155px"><canvas id="gc"></canvas></div></div>
+</div>
+
+<div class="sec" style="margin-bottom:12px">
+  <div class="sec-title">GC event log</div>
+  <table class="gtbl">
+    <thead><tr><th>Time</th><th>Type</th><th>Before</th><th>After</th><th>Pause</th><th>Freed</th></tr></thead>
+    <tbody id="gl"></tbody>
+  </table>
+</div>
+
+<div class="sec">
+  <div class="sec-title">JVM threads — <span id="tc">12</span> active</div>
+  <div class="tgrid" id="tg"></div>
+</div>
+
+<div class="foot">Built by <a href="https://github.com/Mohit-Java-Caps">Mohit Kumar</a> — Java Full Stack Engineer @ Cognizant &nbsp;·&nbsp; <a href="https://github.com/Mohit-Java-Caps/jvm-heap-memory-management">jvm-heap-memory-management</a></div>
+</div>
+<script>
+const HM=512,EM=80,SM=20,OM=380;
+let cur='normal',gcN=0,gcMs=0,proN=0,tkN=0,gcF=false;
+let eu=15,su=5,ou=40;
+let hH=[],gcH=[];
+const CFG={
+  normal:{eg:()=>2+Math.random()*2,og:()=>0.3+Math.random()*.2,thr:75,gp:()=>8+Math.random()*12},
+  heavy:{eg:()=>6+Math.random()*4,og:()=>1+Math.random()*.5,thr:70,gp:()=>15+Math.random()*25},
+  leak:{eg:()=>3+Math.random()*2,og:()=>2+Math.random()*1.5,thr:90,gp:()=>30+Math.random()*40},
+  oom:{eg:()=>8+Math.random()*6,og:()=>4+Math.random()*3,thr:95,gp:()=>60+Math.random()*80}
+};
+const THREADS=['main','http-1','http-2','http-3','GC-Thread','JIT-Compiler','Finalizer','Signal','kafka-1','scheduler','db-pool','metrics'];
+const TSTATES=['RUNNABLE','WAITING','BLOCKED','TIMED_WAIT'];
+const TCLS=['tr','tw','tb','tl'];
+
+function sc(s,el){
+  cur=s;
+  document.querySelectorAll('.btn').forEach(b=>b.classList.remove('on'));
+  el.classList.add('on');
+  const r={normal:[15,5,40],heavy:[20,8,60],leak:[10,5,120],oom:[30,10,280]};
+  [eu,su,ou]=r[s];proN=0;
+}
+function fgc(){gcF=true;}
+function pct(u,m){return Math.min(100,Math.round(u/m*100));}
+
+function doGC(type){
+  const cfg=CFG[cur],before=Math.round(eu+su+ou);
+  const pause=Math.round(cfg.gp());
+  gcMs+=pause;gcN++;
+  if(type==='minor'){
+    const surv=eu*.15;proN+=Math.round(surv*2);
+    eu=2;su=Math.min(SM,su*.5+surv);ou+=surv*.3;
+  } else {
+    const freed=ou*.35+su*.4;ou-=freed;su*=.3;eu=3;
+  }
+  const after=Math.round(eu+su+ou);
+  addLog(type,before,after,pause);
+  gcH.push({t:tkN,p:pause,type});
+  if(gcH.length>20) gcH.shift();
+}
+
+function addLog(type,before,after,pause){
+  const tb=document.getElementById('gl');
+  const tr=document.createElement('tr');
+  const cls=pause<20?'good':pause<50?'warn':'bad';
+  tr.innerHTML=`<td>${new Date().toLocaleTimeString()}</td><td style="color:var(--a)">${type==='minor'?'Minor GC':'Full GC'}</td><td>${before} MB</td><td>${after} MB</td><td class="${cls}">${pause} ms</td><td style="color:var(--g)">-${before-after} MB</td>`;
+  tb.insertBefore(tr,tb.firstChild);
+  while(tb.rows.length>8) tb.deleteRow(tb.rows.length-1);
+}
+
+const hCtx=document.getElementById('hc').getContext('2d');
+const gCtx=document.getElementById('gc').getContext('2d');
+const chartOpts={responsive:true,maintainAspectRatio:false,animation:{duration:0},plugins:{legend:{labels:{color:'#55556a',font:{size:10},boxWidth:12}}},scales:{x:{display:false},y:{grid:{color:'rgba(255,255,255,.04)'},ticks:{color:'#55556a',font:{size:10}}}}};
+
+const hChart=new Chart(hCtx,{type:'line',data:{labels:[],datasets:[
+  {label:'Eden',data:[],borderColor:'#7c6af7',backgroundColor:'rgba(124,106,247,.08)',fill:true,tension:.3,pointRadius:0,borderWidth:1.5},
+  {label:'Old Gen',data:[],borderColor:'#42f7c8',backgroundColor:'rgba(66,247,200,.05)',fill:true,tension:.3,pointRadius:0,borderWidth:1.5},
+  {label:'Total',data:[],borderColor:'#f7c842',fill:false,tension:.3,pointRadius:0,borderWidth:2,borderDash:[4,3]}
+]},options:{...chartOpts,scales:{...chartOpts.scales,y:{...chartOpts.scales.y,min:0,max:HM}}}});
+
+const gChart=new Chart(gCtx,{type:'bar',data:{labels:[],datasets:[
+  {label:'Minor GC',data:[],backgroundColor:'rgba(124,106,247,.6)',borderWidth:0},
+  {label:'Full GC',data:[],backgroundColor:'rgba(247,66,106,.6)',borderWidth:0}
+]},options:chartOpts});
+
+function updateThreads(){
+  const g=document.getElementById('tg');
+  g.innerHTML='';
+  THREADS.forEach(t=>{
+    const si=Math.floor(Math.random()*4);
+    const d=document.createElement('div');
+    d.className='th';
+    d.innerHTML=`<div class="tn">${t}</div><div class="ts ${TCLS[si]}">${TSTATES[si]}</div>`;
+    g.appendChild(d);
+  });
+}
+
+function tick(){
+  tkN++;
+  const cfg=CFG[cur];
+  eu+=cfg.eg();ou+=cfg.og();su=Math.min(SM,su+.3);
+  const tot=eu+su+ou,tp=pct(tot,HM);
+  if(gcF){doGC('full');gcF=false;}
+  else if(eu>=EM*.9) doGC('minor');
+  else if(tp>cfg.thr) doGC('full');
+
+  document.getElementById('be').style.width=pct(eu,EM)+'%';
+  document.getElementById('bs').style.width=pct(su,SM)+'%';
+  document.getElementById('bo').style.width=pct(ou,OM)+'%';
+  document.getElementById('eu').textContent=Math.round(eu);
+  document.getElementById('su').textContent=Math.round(su);
+  document.getElementById('ou').textContent=Math.round(ou);
+  document.getElementById('ep').textContent=pct(eu,EM);
+  document.getElementById('sp').textContent=pct(su,SM);
+  document.getElementById('op').textContent=pct(ou,OM);
+  document.getElementById('mu').textContent=45+Math.round(Math.random()*2);
+
+  const um=Math.round(tot);
+  const m1=document.getElementById('m1');
+  m1.textContent=um+' MB';
+  m1.style.color=tp>85?'#f7426a':tp>70?'#f7c842':'#42f7c8';
+  document.getElementById('m1s').textContent='of 512 MB ('+tp+'%)';
+  document.getElementById('m2').textContent=gcN;
+  document.getElementById('m3').textContent=gcMs+' ms';
+  document.getElementById('m3s').textContent='avg '+(gcN?Math.round(gcMs/gcN):0)+' ms/event';
+  document.getElementById('m4').textContent=proN>999?Math.round(proN/100)/10+'K':proN;
+  document.getElementById('al').style.display=tp>85?'block':'none';
+
+  hH.push({e:Math.round(eu),o:Math.round(ou),t:um});
+  if(hH.length>60) hH.shift();
+  const labs=hH.map((_,i)=>i);
+  hChart.data.labels=labs;
+  hChart.data.datasets[0].data=hH.map(h=>h.e);
+  hChart.data.datasets[1].data=hH.map(h=>h.o);
+  hChart.data.datasets[2].data=hH.map(h=>h.t);
+  hChart.update('none');
+
+  gChart.data.labels=gcH.map((_,i)=>i);
+  gChart.data.datasets[0].data=gcH.map(h=>h.type==='minor'?h.p:0);
+  gChart.data.datasets[1].data=gcH.map(h=>h.type==='full'?h.p:0);
+  gChart.update('none');
+
+  if(tkN%6===0) updateThreads();
+}
+
+updateThreads();
+setInterval(tick,800);
+</script>
+</body>
+</html>
